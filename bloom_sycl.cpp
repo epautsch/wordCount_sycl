@@ -1,5 +1,6 @@
 #include "bloom.h"
-#include <CLI/CLI.hpp>
+// #include <CLI/CLI.hpp>
+#include "CLI11.hpp"
 #include <openssl/md5.h>
 #include <openssl/sha.h>
 #include <string.h>
@@ -11,7 +12,7 @@
 #include <vector>
 #include <set>
 #include <fstream>
-#include <algorithm>
+#include <algorithm> 
 #include <string>
 #include <iterator>
 #include <cctype>
@@ -30,7 +31,7 @@ public:
         , numHashFuncs(numberOfHashFunctions)
         , numInserts(0)
         , collisions(0) {
-            data = make_unique<bitset<numeric_limits<size_t>::max()>>(numBits);
+            data = make_unique<bitset<1000000>>(numBits);
     }
 
     void insert(const string& element) {
@@ -38,15 +39,18 @@ public:
 
         queue myQueue;
         buffer<size_t, 1> hashes_buffer(hashes.data(), range<1>(hashes.size()));
-        buffer<bool, 1> data_buffer(data->size());
-        std::copy(data->begin(), data->end(), data_buffer.get_host_access().begin());
+        vector<bool> data_vector(data->size());
+        for (size_t i = 0; i < data->size(); i++) {
+            data_vector[i] = (*data)[i];
+        }
+        buffer<bool, 1> data_buffer(data_vector.data(), range<1>(data_vector.size()));
         myQueue.submit([&](handler& cgh) {
             auto hashes_acc = hashes_buffer.get_access<access::mode::read>(cgh);
             auto data_acc = data_buffer.get_access<access::mode::read_write>(cgh);
             cgh.parallel_for<class insert_kernel>(range<1>(hashes.size()), [=](id<1> idx) {
                 size_t hash = hashes_acc[idx];
                 if (data_acc[hash]) {
-                    atomic_ref<int, memory_order::relaxed, memory_scope::device, access::address_space::global_space> collisions_atomic(collisions);
+                    atomic_ref<int, sycl::memory_order::relaxed, sycl::memory_scope::device, sycl::access::address_space::global_space> collisions_atomic(collisions);
                     collisions_atomic++;
                 }
                 data_acc[hash] = true;
@@ -63,8 +67,11 @@ public:
         bool all_found = true;
         queue myQueue;
         buffer<size_t, 1> hashes_buffer(hashes.data(), range<1>(hashes.size()));
-        buffer<bool, 1> data_buffer(data->size());
-        std::copy(data->begin(), data->end(), data_buffer.get_host_access().begin());
+        vector<bool> data_vector(data->size());
+        for (size_t i = 0; i < data->size(); i++) {
+            data_vector[i] = (*data)[i];
+        }
+        buffer<bool, 1> data_buffer(data_vector.data(), range<1>(data_vector.size()));
         myQueue.submit([&](handler& cgh) {
             auto hashes_acc = hashes_buffer.get_access<access::mode::read>(cgh);
             auto data_acc = data_buffer.get_access<access::mode::read>(cgh);
@@ -91,7 +98,7 @@ public:
 private:
     size_t numBits;
     size_t numHashFuncs;
-    unique_ptr<bitset<numeric_limits<size_t>::max()>> data;
+    unique_ptr<bitset<1000000>> data;
     int numInserts;
     int collisions;
 
